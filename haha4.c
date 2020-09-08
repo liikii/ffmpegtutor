@@ -164,7 +164,6 @@ int main(int argc, char *argv[]) {
     AVCodecContext *pCodecCtx = NULL;
     // Get a pointer to the codec context for the video stream
     pCodecCtxOrig=pFormatCtx->streams[videoStream]->codec;
-
     AVCodec *pCodec = NULL;
     // Find the decoder for the video stream
     // Find the decoder with the CodecID id. Returns NULL on failure. 
