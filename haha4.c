@@ -373,6 +373,25 @@ int main(int argc, char *argv[]) {
 
     
     i=0;
+
+
+    SDL_Overlay     *bmp;
+    SDL_Surface     *screen;
+    SDL_Rect        rect;
+    SDL_Event       event;
+
+    // Make a screen to put our video
+    #ifndef __DARWIN__
+            screen = SDL_SetVideoMode(pCodecCtx->width, pCodecCtx->height, 0, 0);
+    #else
+            screen = SDL_SetVideoMode(pCodecCtx->width, pCodecCtx->height, 24, 0);
+    #endif
+    if(!screen) {
+        fprintf(stderr, "SDL: could not set video mode - exiting\n");
+        exit(1);
+    }
+
+
     // av_read_frame从字面意思上来看，就是从内存中读取一帧数据，
     /*
     av_read_frame::::
