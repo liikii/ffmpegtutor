@@ -227,27 +227,27 @@ int main(int argc, char *argv[]) {
     // we're going to have to convert our frame from its native format to RGB. 
     // ffmpeg will do these conversions for us. For most projects (including ours)
     // we're going to want to convert our initial frame to a specific format. Let's allocate a frame for the converted frame now.
-    AVFrame *pFrameRGB = NULL;
-    pFrameRGB=av_frame_alloc();
+    // AVFrame *pFrameRGB = NULL;
+    // pFrameRGB=av_frame_alloc();
 
-    if(pFrameRGB==NULL){
-        printf("av_frame_alloc error\n");
-        return -1;
-    }
+    // if(pFrameRGB==NULL){
+    //     printf("av_frame_alloc error\n");
+    //     return -1;
+    // }
 
     /*
     Even though we've allocated the frame, we still need a place to put the raw data when we convert it. 
     We use avpicture_get_size to get the size we need, and allocate the space manually:
     */
-    uint8_t *buffer = NULL;
-    int numBytes;
+    // uint8_t *buffer = NULL;
+    // int numBytes;
     // Determine required buffer size and allocate buffer
     // Calculates how many bytes will be required for a picture of the given width, height, and pic format.
-    numBytes=avpicture_get_size(AV_PIX_FMT_RGB24, pCodecCtx->width, pCodecCtx->height);
+    // numBytes=avpicture_get_size(AV_PIX_FMT_RGB24, pCodecCtx->width, pCodecCtx->height);
 
     // Memory allocation of size byte with alignment suitable for all memory accesses (including vectors if available on the CPU). av_malloc(0) must return a non NULL pointer.
     // av_malloc is ffmpeg's malloc that is just a simple wrapper around malloc that makes sure the memory addresses are aligned and such. It will not protect you from memory leaks, double freeing, or other malloc problems.
-    buffer=(uint8_t *)av_malloc(numBytes*sizeof(uint8_t));
+    // buffer=(uint8_t *)av_malloc(numBytes*sizeof(uint8_t));
 
     // Now we use avpicture_fill to associate the frame with our newly allocated buffer. About the AVPicture cast: the AVPicture struct is a subset of the AVFrame struct - the beginning of the AVFrame struct is identical to the AVPicture struct.
 
@@ -255,7 +255,7 @@ int main(int argc, char *argv[]) {
     // Note that pFrameRGB is an AVFrame, but AVFrame is a superset
     // of AVPicture
     // 这个函数的使用本质上是为已经分配的空间的结构体AVPicture挂上一段用于保存数据的空间，这个结构体中有一个指针数组data[4]，挂在这个数组里。一般我们这么使用：
-    avpicture_fill((AVPicture *)pFrameRGB, buffer, AV_PIX_FMT_RGB24, pCodecCtx->width, pCodecCtx->height);
+    // avpicture_fill((AVPicture *)pFrameRGB, buffer, AV_PIX_FMT_RGB24, pCodecCtx->width, pCodecCtx->height);
 
 
     // ----------------------------------
@@ -358,13 +358,14 @@ int main(int argc, char *argv[]) {
     //         SwsFilter *dstFilter, /* 输出图像的滤波器信息, 若不需要传NULL */
     //         const double *param /* 特定缩放算法需要的参数(?)，默认为NULL */
     //         );
-
+    // PIX_FMT_YUV420P  AV_PIX_FMT_RGB24
+    //  // initialize SWS context for software scaling
     sws_ctx = sws_getContext(pCodecCtx->width,
         pCodecCtx->height,
         pCodecCtx->pix_fmt,
         pCodecCtx->width,
         pCodecCtx->height,
-        AV_PIX_FMT_RGB24,
+        AV_PIX_FMT_YUV420P,
         SWS_BILINEAR,
         NULL,
         NULL,
@@ -372,9 +373,31 @@ int main(int argc, char *argv[]) {
         );
 
     
-    i=0;
+    // i=0;
 
+    // SDL_Window: 实现消息控制
+    // SDL_Overlay:数据存储
+    // SDL_Render：数据显示
+    // 　由于关注的是视频显示问题，就没有SDL_Surface更多的研究，但从它的结构来看，与SDL_Overlay一样，用来存储数据用的。
 
+    /*
+    解释
+    Q:
+    Line127 AVPicture pict;
+    为什么这里的pict没有像Tutorial01中的pFrameRGB去手动分配空间？
+    A:
+    因为pict的data和linesize已经指向了SDL_Overlay  *bmp的空间，随后在sws_scale()中对pict的操作实际上是对bmp在进行操作。
+     
+    Q:
+    SDL_PollEvent(&event);
+        switch(event.type) {
+        case SDL_QUIT:
+          SDL_Quit();
+    ……
+    这个事件系统是做什么的？有什么作用？
+    A:
+    本篇中作用不大，但千万别小看了它。后面的多线程以及音视频同步都是以它为基础。
+    */
     SDL_Overlay     *bmp;
     SDL_Surface     *screen;
     SDL_Rect        rect;
@@ -390,6 +413,16 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "SDL: could not set video mode - exiting\n");
         exit(1);
     }
+
+    /*SDL's YUV overlay takes in a raw array of YUV data and displays it. It accepts 4 different kinds of YUV formats, but YV12 is the fastest. There is another YUV format called YUV420P that is the same as YV12, except the U and V arrays are switched. The 420 means it is subsampled at a ratio of 4:2:0, basically meaning there is 1 color sample for every 4 luma samples, so the color information is quartered. This is a good way of saving bandwidth, as the human eye does not percieve this change. The "P" in the name means that the format is "planar" — simply meaning that the Y, U, and V components are in separate arrays. ffmpeg can convert images to YUV420P, with the added bonus that many video streams are in that format already, or are easily converted to that format.
+    
+    */
+    // yuv12 yuv420p 仅仅是uv 交换. 
+    // Allocate a place to put our YUV image on that screen
+    bmp = SDL_CreateYUVOverlay(pCodecCtx->width,
+                 pCodecCtx->height,
+                 SDL_YV12_OVERLAY,
+                 screen);
 
 
     // av_read_frame从字面意思上来看，就是从内存中读取一帧数据，
@@ -468,25 +501,59 @@ int main(int argc, char *argv[]) {
                         4.参数int srcSliceY, int srcSliceH,定义在输入图像上处理区域，srcSliceY是起始位置，srcSliceH是处理多少行。如果srcSliceY=0，srcSliceH=height，表示一次性处理完整个图像。这种设置是为了多线程并行，例如可以创建两个线程，第一个线程处理 [0, h/2-1]行，第二个线程处理 [h/2, h-1]行。并行处理加快速度。
                         5.参数uint8_t *const dst[], const int dstStride[]定义输出图像信息（输出的每个颜色通道数据指针，每个颜色通道行字节数）
                     */
-                    sws_scale(sws_ctx, (uint8_t const * const *)pFrame->data,
-                      pFrame->linesize, 0, pCodecCtx->height,
-                      pFrameRGB->data, pFrameRGB->linesize);
+                    // code:
+                    // sws_scale(sws_ctx, (uint8_t const * const *)pFrame->data,
+                    //   pFrame->linesize, 0, pCodecCtx->height,
+                    //   pFrameRGB->data, pFrameRGB->linesize);
                 
                     // Save the frame to disk
-                    if(++i<=5){
-                        printf("----> %d\n", i);
-                        SaveFrame(pFrameRGB, pCodecCtx->width, pCodecCtx->height, i);
-                    }
-                        
+                    // code:
+                    // if(++i<=5){
+                    //     printf("----> %d\n", i);
+                    //     SaveFrame(pFrameRGB, pCodecCtx->width, pCodecCtx->height, i);
+                    // }
+                    
+                    SDL_LockYUVOverlay(bmp);
+
+                    AVPicture pict;
+                    pict.data[0] = bmp->pixels[0];
+                    pict.data[1] = bmp->pixels[2];
+                    pict.data[2] = bmp->pixels[1];
+
+                    pict.linesize[0] = bmp->pitches[0];
+                    pict.linesize[1] = bmp->pitches[2];
+                    pict.linesize[2] = bmp->pitches[1];
+
+                    // Convert the image into YUV format that SDL uses
+                    sws_scale(sws_ctx, (uint8_t const * const *)pFrame->data,
+                          pFrame->linesize, 0, pCodecCtx->height,
+                          pict.data, pict.linesize);
+
+                    SDL_UnlockYUVOverlay(bmp);
+                    
+                    rect.x = 0;
+                    rect.y = 0;
+                    rect.w = pCodecCtx->width;
+                    rect.h = pCodecCtx->height;
+                    SDL_DisplayYUVOverlay(bmp, &rect);
                 }
           }
     
         // Free the packet that was allocated by av_read_frame
         av_free_packet(&packet);
+        SDL_PollEvent(&event);
+        switch(event.type) {
+            case SDL_QUIT:
+              SDL_Quit();
+              exit(0);
+              break;
+            default:
+              break;
+        }
     }
     // Free the RGB image
-    av_free(buffer);
-    av_free(pFrameRGB);
+    // av_free(buffer);
+    // av_free(pFrameRGB);
 
     // Free the YUV frame
     av_free(pFrame);
@@ -501,10 +568,6 @@ int main(int argc, char *argv[]) {
     printf("hello av\n");
     return 0;
 }
-
-
-
-
 
 
 
