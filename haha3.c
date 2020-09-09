@@ -64,6 +64,7 @@ int main(int argc, char const *argv[])
         exit(1);
     }
 
+    // https://ffmpeg.org/doxygen/trunk/structAVFormatContext.html
     // 可能就是存了一点视频文件的一个基础信息, 以供解码用. ffprobe -v quiet -print_format json -show_format -show_streams
     AVFormatContext *pFormatCtx = NULL;
     // Open video file  主要是初始华pFormatCtx
@@ -71,6 +72,7 @@ int main(int argc, char const *argv[])
         return -1; // Couldn't open file
     }
 
+    
 
     /* code */
     return 0;
