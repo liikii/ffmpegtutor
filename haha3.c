@@ -1,6 +1,10 @@
 /*
+
+
 gcc -o haha3 haha3.c -lavutil -lavformat -lavcodec -lswscale -lz -lm \
 `sdl-config --cflags --libs`
+
+scp haha3.c liikii@192.168.1.104:/home/liikii/tmp3/
 
 
 */
