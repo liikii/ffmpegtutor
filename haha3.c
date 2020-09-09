@@ -11,7 +11,7 @@ gcc -o haha3 haha3.c -lavutil -lavformat -lavcodec -lswscale -lz -lm \
 #include <SDL.h>
 #include <SDL_thread.h>
 
-// 看不
+// 确保main不被覆盖
 #ifdef __MINGW32__
 #undef main /* Prevents SDL from overriding main() */
 #endif
@@ -43,7 +43,30 @@ typedef struct PacketQueue {
 
 
 int main(int argc, char const *argv[])
-{
+{   
+    // 确保有个参数
+    if(argc < 2) {
+        fprintf(stderr, "Usage: test <file>\n");
+        exit(1);
+    }
+
+    // Register all formats and codecs
+    // 注册 解码器 
+    av_register_all();
+
+    // 对SDL做初始化  SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER 初始化标志位. 
+    if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER)) {
+        fprintf(stderr, "Could not initialize SDL - %s\n", SDL_GetError());
+        exit(1);
+    }
+
+    AVFormatContext *pFormatCtx = NULL;
+    // Open video file  主要是初始华pFormatCtx
+    if(avformat_open_input(&pFormatCtx, argv[1], NULL, NULL)!=0){
+        return -1; // Couldn't open file
+    }
+    
+
     /* code */
     return 0;
 }
