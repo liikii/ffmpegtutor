@@ -60,12 +60,13 @@ int main(int argc, char const *argv[])
         exit(1);
     }
 
+    // 可能就是存了一点视频文件的一个基础信息, 以供解码用. ffprobe -v quiet -print_format json -show_format -show_streams
     AVFormatContext *pFormatCtx = NULL;
     // Open video file  主要是初始华pFormatCtx
     if(avformat_open_input(&pFormatCtx, argv[1], NULL, NULL)!=0){
         return -1; // Couldn't open file
     }
-    
+
 
     /* code */
     return 0;
