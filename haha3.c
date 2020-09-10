@@ -118,14 +118,62 @@ int packet_queue_put(PacketQueue *q, AVPacket *pkt) {
     q->nb_packets++;
     q->size += pkt1->pkt.size;
     // 发加数据信号给要的人. 
+
     SDL_CondSignal(q->cond);
     // 释放锁
     SDL_UnlockMutex(q->mutex);
     return 0;
 }
 
+// 取音频包
+static int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block){
+    // PacketQueue *q 全局队列. 
+    AVPacketList *pkt1;
+    int ret;
+    SDL_LockMutex(q->mutex);
 
-// 解音频
+    for(;;) {
+        if(quit) {
+            ret = -1;
+            break;
+        }
+        // 取第一个. 
+        pkt1 = q->first_pkt;
+        if (pkt1) {
+            // 把第一个从队列踢出  下一个设为第一个. 
+            q->first_pkt = pkt1->next;
+            // 如果没有后续
+            if (!q->first_pkt){
+                q->last_pkt = NULL;
+            }
+            // 包数减一. 
+            q->nb_packets--;
+            // 大小减去取的包大小. 
+            q->size -= pkt1->pkt.size;
+            // 赋值
+            *pkt = pkt1->pkt;
+            // 释放空间
+            av_free(pkt1);
+            ret = 1;
+            break;
+        } else if (!block) {
+            ret = 0;
+            break;
+        } else {
+            //  SDL_CondWait() makes the function block (i.e. pause until we get data) if we tell it to.
+            // all CondWait does is wait for a signal from SDL_CondSignal() (or SDL_CondBroadcast()) and 
+            // then continue. However, it looks as though we've trapped it within our mutex — 
+            // if we hold the lock, our put function can't put anything in the queue! However, what SDL_CondWait() also does 
+            // for us is to unlock the mutex we give it and then attempt to lock it again once we get the signal.
+            SDL_CondWait(q->cond, q->mutex);
+        }
+    }
+    SDL_UnlockMutex(q->mutex);
+    return ret;
+}
+
+
+// 解音频包
 int audio_decode_frame(AVCodecContext *aCodecCtx, uint8_t *audio_buf, int buf_size) {
     // 包
     static AVPacket pkt;
@@ -164,16 +212,18 @@ int audio_decode_frame(AVCodecContext *aCodecCtx, uint8_t *audio_buf, int buf_si
             /* We have data, return it and come back for more later */
             return data_size;
         }
-        if(pkt.data)
-        av_free_packet(&pkt);
+        if(pkt.data){
+            av_free_packet(&pkt);
+        }
 
         if(quit) {
-        return -1;
+            return -1;
         }
-
+        // 取数据
         if(packet_queue_get(&audioq, &pkt, 1) < 0) {
-        return -1;
+            return -1;
         }
+        // 设数据大小
         audio_pkt_data = pkt.data;
         audio_pkt_size = pkt.size;
     }
