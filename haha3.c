@@ -42,13 +42,15 @@ scp haha3.c liikii@192.168.1.104:/home/liikii/tmp3/
 #define SDL_AUDIO_BUFFER_SIZE 1024
 #define MAX_AUDIO_FRAME_SIZE 192000
 
-// 音频数据队列
-PacketQueue audioq;
-// 控制窗口标志
-int quit = 0;
-
-
-
+/*
+Queues
+There! Now we're ready to start pulling audio information from the stream. 
+But what do we do with that information? We are going to be continuously getting packets 
+from the movie file, but at the same time SDL is going to call the callback function! 
+The solution is going to be to create some kind of global structure that we can stuff audio packets 
+in so our audio_callback has something to get audio data from! So what we're going to do is to create a queue of packets. 
+ffmpeg even comes with a structure to help us with this: AVPacketList, which is just a linked list for packets. Here's our queue structure:
+*/
 typedef struct PacketQueue {
     AVPacketList *first_pkt, *last_pkt;
     // 数据包数量
@@ -61,7 +63,121 @@ typedef struct PacketQueue {
 } PacketQueue;
 
 
+// 音频数据队列
+PacketQueue audioq;
+// 控制窗口标志
+int quit = 0;
 
+
+// 初始化 PacketQueue
+void packet_queue_init(PacketQueue *q) {
+  memset(q, 0, sizeof(PacketQueue));
+  q->mutex = SDL_CreateMutex();
+  q->cond = SDL_CreateCond();
+}
+
+
+// packetqueue 里是  avpacketlist, packetlist是avpacket包与下一包地址. 
+// 放音频包
+// SDL_LockMutex() locks the mutex in the queue so we can add something to it, 
+// and then SDL_CondSignal() sends a signal to our get function (if it is waiting) 
+// through our condition variable to tell it that there is data and it can proceed, 
+// then unlocks the mutex to let it go.
+int packet_queue_put(PacketQueue *q, AVPacket *pkt) {
+    // 
+    AVPacketList *pkt1;
+    // 拷贝包. 
+    if(av_dup_packet(pkt) < 0) {
+        return -1;
+    }
+    /*
+    typedef struct AVPacketList  
+    {  
+    AVPacket pkt;  
+    struct AVPacketList *next; // 用于把各个 AVPacketList 串联起来。  
+    } AVPacketList;  
+    */
+    pkt1 = av_malloc(sizeof(AVPacketList));
+    if (!pkt1){
+        return -1;
+    }
+    pkt1->pkt = *pkt;
+    pkt1->next = NULL;
+
+    SDL_LockMutex(q->mutex);
+
+    if (!q->last_pkt){
+        // queue 为空
+        q->first_pkt = pkt1;
+    }else{
+        新包进来把原最后包下一个指到新包上. 
+        q->last_pkt->next = pkt1;
+    }
+    // 追回为尾包.
+    q->last_pkt = pkt1;
+    q->nb_packets++;
+    q->size += pkt1->pkt.size;
+    // 发加数据信号给要的人. 
+    SDL_CondSignal(q->cond);
+    // 释放锁
+    SDL_UnlockMutex(q->mutex);
+    return 0;
+}
+
+
+// 解音频
+int audio_decode_frame(AVCodecContext *aCodecCtx, uint8_t *audio_buf, int buf_size) {
+    // 包
+    static AVPacket pkt;
+    static uint8_t *audio_pkt_data = NULL;
+    static int audio_pkt_size = 0;
+    static AVFrame frame;
+
+    int len1, data_size = 0;
+
+    for(;;) {
+        // 
+        while(audio_pkt_size > 0) {
+            int got_frame = 0;
+            len1 = avcodec_decode_audio4(aCodecCtx, &frame, &got_frame, &pkt);
+            if(len1 < 0) {
+            /* if error, skip frame */
+            audio_pkt_size = 0;
+            break;
+            }
+            audio_pkt_data += len1;
+            audio_pkt_size -= len1;
+            data_size = 0;
+            if(got_frame) {
+            data_size = av_samples_get_buffer_size(NULL, 
+                   aCodecCtx->channels,
+                   frame.nb_samples,
+                   aCodecCtx->sample_fmt,
+                   1);
+            assert(data_size <= buf_size);
+            memcpy(audio_buf, frame.data[0], data_size);
+            }
+            if(data_size <= 0) {
+            /* No data yet, get more frames */
+            continue;
+            }
+            /* We have data, return it and come back for more later */
+            return data_size;
+        }
+        if(pkt.data)
+        av_free_packet(&pkt);
+
+        if(quit) {
+        return -1;
+        }
+
+        if(packet_queue_get(&audioq, &pkt, 1) < 0) {
+        return -1;
+        }
+        audio_pkt_data = pkt.data;
+        audio_pkt_size = pkt.size;
+    }
+}
 
 
 //  音频播放段 回调用. 
