@@ -16,6 +16,7 @@ scp haha3.c liikii@192.168.1.104:/home/liikii/tmp3/
 7. av_read_frame 获取流中每帧的数据流
 8. avcodec_send_packet
 9. avcodec_receive_frame
+--------------------------------
 */
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -41,16 +42,20 @@ scp haha3.c liikii@192.168.1.104:/home/liikii/tmp3/
 #define SDL_AUDIO_BUFFER_SIZE 1024
 #define MAX_AUDIO_FRAME_SIZE 192000
 
+// 音视频数据队列
+PacketQueue audioq;
+int quit = 0;
+
 
 typedef struct PacketQueue {
-  AVPacketList *first_pkt, *last_pkt;
-  // 数据包数量
-  int nb_packets;
-  // 数据大小 
-  int size;
-  // 两个锁  主要是防止不同线程读写冲突. 
-  SDL_mutex *mutex;
-  SDL_cond *cond;
+    AVPacketList *first_pkt, *last_pkt;
+    // 数据包数量
+    int nb_packets;
+    // 数据大小 
+    int size;
+    // 两个锁  主要是防止不同线程读写冲突. 
+    SDL_mutex *mutex;
+    SDL_cond *cond;
 } PacketQueue;
 
 
@@ -171,8 +176,74 @@ int main(int argc, char const *argv[])
         fprintf(stderr, "SDL_OpenAudio: %s\n", SDL_GetError());
         return -1;
     }
-
+    /*
+    
+    avcodec_open2()的源代码量是非常长的，但是它的调用关系非常简单——它只调用了一个关键的函数，即AVCodec的init()，后文将会对这个函数进行分析。
+    我们可以简单梳理一下avcodec_open2()所做的工作，如下所列：
+    （1）为各种结构体分配内存（通过各种av_malloc()实现）。
+    （2）将输入的AVDictionary形式的选项设置到AVCodecContext。
+    （3）其他一些零零碎碎的检查，比如说检查编解码器是否处于“实验”阶段。
+    （4）如果是编码器，检查输入参数是否符合编码器的要求
+    （5）调用AVCodec的init()初始化具体的解码器。
+    */
+    // 该函数用于初始化一个视音频编解码器的AVCodecContext。
     avcodec_open2(aCodecCtx, aCodec, NULL);
+
+    /*
+    AVFrame中存储的是经过解码后的原始数据。在解码中，AVFrame是解码器的输出；在编码中，AVFrame是编码器的输入。
+    AVFrame对象必须调用av_frame_alloc()在堆上分配，注意此处指的是AVFrame对象本身，AVFrame对象必须调用av_frame_free()进行销毁。
+    AVFrame中包含的数据缓冲区是
+    AVFrame通常只需分配一次，然后可以多次重用，每次重用前应调用av_frame_unref()将frame复位到原始的干净可用的状态。
+    */
+    AVFrame *pFrame = NULL;
+    // Allocate video frame
+    pFrame=av_frame_alloc();
+
+    /*
+    
+    */
+    // 到屏幕的像素
+    // A structure that contains a collection of pixels used in software blitting.
+    SDL_Surface     *screen;
+    // Make a screen to put our video
+    // 
+#ifndef __DARWIN__
+    screen = SDL_SetVideoMode(pCodecCtx->width, pCodecCtx->height, 0, 0);
+#else
+    screen = SDL_SetVideoMode(pCodecCtx->width, pCodecCtx->height, 24, 0);
+#endif
+
+    if(!screen) {
+        fprintf(stderr, "SDL: could not set video mode - exiting\n");
+        exit(1);
+    }
+    // Overlays are the best method available for rendering video. They are based on the YUV color formats, which come in either packed or planar formats. See the link above for detailed information on the different formats and their structures.
+    // A SDL_Overlay is similar to a SDL_Surface except it stores a YUV overlay. All the fields are read only, except for pixels which should be locked before use. 
+    // Create a new overlay using SDL_CreateYUVOverlay. Pass this the width, height, and format of the overlay, as well as a pointer to the SDL display it should be displayed on. The overlays are scalable, meaning the width and height of the overlay do not need to be the same as the width and height of the surface. As mentioned on the CreateYUVOverlay page, SDL is fastest at 2x scaling. An example:
+    SDL_Overlay  *bmp;
+    // 初始化overlay
+    // Allocate a place to put our YUV image on that screen
+    bmp = SDL_CreateYUVOverlay(pCodecCtx->width,
+                 pCodecCtx->height,
+                 SDL_YV12_OVERLAY,
+                 screen);
+
+    // 
+    // sws_scale
+    //  函数主要是用来做视频像素格式和分辨率的转换,
+    struct SwsContext *sws_ctx = NULL;
+    // initialize SWS context for software scaling
+    sws_ctx = sws_getContext(pCodecCtx->width,
+               pCodecCtx->height,
+               pCodecCtx->pix_fmt,
+               pCodecCtx->width,
+               pCodecCtx->height,
+               PIX_FMT_YUV420P,
+               SWS_BILINEAR,
+               NULL,
+               NULL,
+               NULL
+               );
 
     /* code */
     return 0;
