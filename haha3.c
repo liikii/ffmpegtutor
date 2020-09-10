@@ -172,7 +172,11 @@ static int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block){
     return ret;
 }
 
-
+/*
+ Then, once we have a packet to work with, we call avcodec_decode_audio4(), which acts a lot like its sister function, avcodec_decode_video(), except in this case, a packet might have more than one frame, so you may have to call it several times to get all the data out of the packet. Once we have the frame, we simply copy it to our audio buffer, making sure the data_size is smaller than our audio buffer. Also, remember the cast to audio_buf, because SDL gives an 8 bit int buffer, and ffmpeg gives us data in a 16 bit int buffer. You should also notice the difference between len1 and data_size. len1 is how much of the packet we've used, and data_size is the amount of raw data returned.
+When we've got some data, we immediately return to see if we still need to get more data from the queue, or if we are done. If we still had more of the packet to process, we save it for later. If we finish up a packet, we finally get to free that packet.
+So that's it! We've got audio being carried from the main read loop to the queue, which is then read by the audio_callback function, which hands that data to SDL, which SDL beams to your sound card. Go ahead and compile:
+*/
 // 解音频包
 int audio_decode_frame(AVCodecContext *aCodecCtx, uint8_t *audio_buf, int buf_size) {
     // 包
@@ -184,30 +188,38 @@ int audio_decode_frame(AVCodecContext *aCodecCtx, uint8_t *audio_buf, int buf_si
     int len1, data_size = 0;
 
     for(;;) {
-        // 
+        // 有数据
         while(audio_pkt_size > 0) {
             int got_frame = 0;
             len1 = avcodec_decode_audio4(aCodecCtx, &frame, &got_frame, &pkt);
             if(len1 < 0) {
-            /* if error, skip frame */
-            audio_pkt_size = 0;
-            break;
+                // 解码出错
+                /* if error, skip frame */
+                audio_pkt_size = 0;
+                break;
             }
+            // 没出错 继续
+            // 数据大小
             audio_pkt_data += len1;
+            // 数据大小
             audio_pkt_size -= len1;
+
+
             data_size = 0;
             if(got_frame) {
-            data_size = av_samples_get_buffer_size(NULL, 
-                   aCodecCtx->channels,
-                   frame.nb_samples,
-                   aCodecCtx->sample_fmt,
-                   1);
-            assert(data_size <= buf_size);
-            memcpy(audio_buf, frame.data[0], data_size);
+                // av_sample_get_buffer_size来计算音频占用的字节数。
+                data_size = av_samples_get_buffer_size(NULL, 
+                       aCodecCtx->channels,
+                       frame.nb_samples,
+                       aCodecCtx->sample_fmt,
+                       1);
+                assert(data_size <= buf_size);
+                memcpy(audio_buf, frame.data[0], data_size);
             }
+            // 没取frame
             if(data_size <= 0) {
-            /* No data yet, get more frames */
-            continue;
+                /* No data yet, get more frames */
+                continue;
             }
             /* We have data, return it and come back for more later */
             return data_size;
@@ -219,7 +231,8 @@ int audio_decode_frame(AVCodecContext *aCodecCtx, uint8_t *audio_buf, int buf_si
         if(quit) {
             return -1;
         }
-        // 取数据
+
+        // 取数据包
         if(packet_queue_get(&audioq, &pkt, 1) < 0) {
             return -1;
         }
