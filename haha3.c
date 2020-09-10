@@ -61,7 +61,7 @@ int main(int argc, char const *argv[])
     // 对SDL做初始化  SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER 初始化标志位. 
     if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER)) {
         fprintf(stderr, "Could not initialize SDL - %s\n", SDL_GetError());
-        exit(1);
+        exit(2);
     }
 
     // https://ffmpeg.org/doxygen/trunk/structAVFormatContext.html
@@ -69,10 +69,23 @@ int main(int argc, char const *argv[])
     AVFormatContext *pFormatCtx = NULL;
     // Open video file  主要是初始华pFormatCtx
     if(avformat_open_input(&pFormatCtx, argv[1], NULL, NULL)!=0){
-        return -1; // Couldn't open file
+        return 3; // Couldn't open file
     }
 
+    av_dump_format(pFormatCtx, 0, argv[1], 0);
+
+    // * Read packets of a media file to get stream information. This
+     // * is useful for file formats with no headers such as MPEG. This
+     // * function also computes the real framerate in case of MPEG-2 repeat
+     // * frame mode.
+    // Retrieve stream information
+    if(avformat_find_stream_info(pFormatCtx, NULL)<0){
+        return 4; // Couldn't find stream information
+    }
     
+  
+    // Dump information about file onto standard error
+    av_dump_format(pFormatCtx, 0, argv[1], 0);
 
     /* code */
     return 0;
