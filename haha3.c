@@ -251,7 +251,7 @@ void audio_callback(void *userdata, Uint8 *stream, int len) {
     int len1, audio_size;
 
     static uint8_t audio_buf[(MAX_AUDIO_FRAME_SIZE * 3) / 2];
-    // 读了多少数据到buff. 
+    // 有多少数据
     static unsigned int audio_buf_size = 0;
     // 写到那了. 
     static unsigned int audio_buf_index = 0;
@@ -266,7 +266,6 @@ void audio_callback(void *userdata, Uint8 *stream, int len) {
     while(len > 0) {
         // buffer 已用完. 读点数据
         if(audio_buf_index >= audio_buf_size) {
-            
             /* We have already sent all our data; get more */
             audio_size = audio_decode_frame(aCodecCtx, audio_buf, sizeof(audio_buf));
             if(audio_size < 0) {
