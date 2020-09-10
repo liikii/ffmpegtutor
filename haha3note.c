@@ -458,7 +458,9 @@ tbn= the time base in AVStream that has come from the container
 
 tbc= the time base in AVCodecContext for the codec used for a particular stream
 
-tbr= tbr is guessed from the video stream and is the value users want to see when they look for the video frame rate
+tbr= tbr is guessed from the video stream and is the value users want to see
+when they look for the video frame rate, except sometimes it is twice
+what one would expect because of field rate versus frame rate.
 
 25  tbr代表帧率；
 
@@ -467,6 +469,94 @@ tbr= tbr is guessed from the video stream and is the value users want to see whe
 50   tbc代表视频层（st->codec）的时间精度，即1S=50，和strem->duration和时间戳相关。
 
 便于理解，下图为我打印的解码后的时间戳 也就是 视频是25帧 的， 1S = 50 ;
+
+
+
+avformat_find_stream_info前后AVFormatContext的区别
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'test.mp4':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 512
+    compatible_brands: isomiso2avc1mp41
+    encoder         : Lavf58.51.101
+  Duration: 00:00:05.08, bitrate: N/A
+    Stream #0:0(und): Video: h264 (avc1 / 0x31637661), none, 1280x720, 1356 kb/s, SAR 1:1 DAR 16:9, 25 fps, 25 tbr, 12800 tbn (default)
+    Metadata:
+      handler_name    : VideoHandler
+    Stream #0:1(und): Audio: aac (mp4a / 0x6134706D), 48000 Hz, 2 channels, 132 kb/s (default)
+    Metadata:
+      handler_name    : SoundHandler
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'test.mp4':
+  Metadata:
+    major_brand     : isom
+    minor_version   : 512
+    compatible_brands: isomiso2avc1mp41
+    encoder         : Lavf58.51.101
+  Duration: 00:00:05.08, start: 0.000000, bitrate: 1496 kb/s
+    Stream #0:0(und): Video: h264 (Main) (avc1 / 0x31637661), yuv420p, 1280x720 [SAR 1:1 DAR 16:9], 1356 kb/s, 25 fps, 25 tbr, 12800 tbn, 50 tbc (default)
+    Metadata:
+      handler_name    : VideoHandler
+    Stream #0:1(und): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo, fltp, 132 kb/s (default)
+    Metadata:
+      handler_name    : SoundHandler
+
+没有的
+start: 0.000000, bitrate: 1496 kb/s
+yuv420p
+stereo, fltp, 
+
+avformat_find_stream_info
+ * Read packets of a media file to get stream information. This
+ * is useful for file formats with no headers such as MPEG. This
+ * function also computes the real framerate in case of MPEG-2 repeat
+ * frame mode.
+ * The logical file position is not changed by this function;
+ * examined packets may be buffered for later processing.
+
+
+
+AVCodecContext是一个描述编解码器上下文的数据结构，包含了众多编解码器需要的参数信息，位于avcodec.h文件中。
+
+2.常见变量及其作用
+
+enum AVMediaType codec_type; //编解码器的类型（视频，音频...）。
+const struct AVCodec  *codec; //采用的解码器AVCodec（H.264,MPEG2...）。
+int64_t bit_rate;//平均比特率。
+uint8_t *extradata;//针对特定编码器包含的附加信息（例如对于H.264解码器来说，存储SPS，PPS等）。
+int extradata_size;
+AVRational time_base;//时间的基准单位，根据该参数，可以把PTS转化为实际的时间（单位为秒s）。
+编解码延迟。
+int delay;//编码：从编码器输入到解码器输出的帧延迟数。解码：除了规范中规定的标准解码器外产生的帧延迟数。
+int width, height;//代表宽和高（仅视频）。
+int refs;//运动估计参考帧的个数（H.264的话会有多帧，MPEG2这类的一般就没有了）。
+int sample_rate; //采样率（仅音频）。
+int channels; //声道数（仅音频）。
+enum AVSampleFormat sample_fmt;  //音频采样格式，编码：由用户设置。解码：由libavcodec设置。
+int frame_size;//音频帧中每个声道的采样数。编码：由libavcodec在avcodec_open2（）中设置。 解码：可以由一些解码器设置以指示恒定的帧大小.
+int frame_number;//帧计数器，由libavcodec设置。解码：从解码器返回的帧的总数。编码：到目前为止传递给编码器的帧的总数。
+uint64_t channel_layout;//音频声道布局。编码：由用户设置。解码：由用户设置，可能被libavcodec覆盖。
+enum AVAudioServiceType audio_service_type;//音频流传输的服务类型。编码：由用户设置。解码：由libavcodec设置。
+
+
+AVCodec;
+3.常见变量及其作用
+const char *name;//编解码器的名字，比较短。在编码器和解码器之间是全局唯一的。 这是用户查找编解码器的主要方式。
+const char *long_name;//编解码器的名字，全称，比较长。
+enum AVMediaType type;//指明了类型，是视频，音频，还是字幕
+enum AVCodecID id;
+const AVRational *supported_framerates;//支持的帧率（仅视频）
+const enum AVPixelFormat *pix_fmts;//支持的像素格式（仅视频）
+const int *supported_samplerates;//支持的采样率（仅音频）
+const enum AVSampleFormat *sample_fmts;//支持的采样格式（仅音频）
+const uint64_t *channel_layouts;//支持的声道数（仅音频）
+int priv_data_size;//私有数据的大小
+4.常用函数作用
+void (*init_static_data)(struct AVCodec *codec);//初始化编解码器静态数据，从avcodec_register（）调用。
+int (*encode2)(AVCodecContext *avctx, AVPacket *avpkt, const AVFrame *frame, int *got_packet_ptr);//将数据编码到AVPacket。
+int (*decode)(AVCodecContext *, void *outdata, int *outdata_size, AVPacket *avpkt);//解码数据到AVPacket。
+int (*close)(AVCodecContext *);//关闭编解码器。
+void (*flush)(AVCodecContext *);//刷新缓冲区。当seek时会被调用。
+每一个编解码器对应一个该结构体。程序运行时，上述函数指针会赋值为对应的编解码器的函数。
 
 
 */
