@@ -301,10 +301,83 @@ int main(int argc, char const *argv[])
     // 初始化画面帧
     pFrame=av_frame_alloc();
 
+    AVPacket  packet;
+    int       frameFinished;
+    // 读文件包
+    while(av_read_frame(pFormatCtx, &packet)>=0) {
+        // Is this a packet from the video stream?
+        // 是视频流的话
+        if(packet.stream_index==videoStream) {
+            // 解包
+            // Decode video frame
+            avcodec_decode_video2(pCodecCtx, pFrame, &frameFinished, &packet);
+            // 解没解完
+            // Did we get a video frame?
+            if(frameFinished) {
+                // 如果解完
+                // 锁住screen. 可能是防止读写冲突
+                SDL_LockYUVOverlay(bmp);
 
+                // bmp数据指到pict上. 
+                AVPicture pict;
+                pict.data[0] = bmp->pixels[0];
+                pict.data[1] = bmp->pixels[2];
+                pict.data[2] = bmp->pixels[1];
+                // // bmp数据指到pict上. 
+                pict.linesize[0] = bmp->pitches[0];
+                pict.linesize[1] = bmp->pitches[2];
+                pict.linesize[2] = bmp->pitches[1];
 
+                // 格式转化. ()
+                // Convert the image into YUV format that SDL uses  
+                sws_scale(sws_ctx, (uint8_t const * const *)pFrame->data,
+                pFrame->linesize, 0, pCodecCtx->height,
+                pict.data, pict.linesize);
 
+                // 放开读写保护. 
+                SDL_UnlockYUVOverlay(bmp);
+                // 显示位置
+                rect.x = 0;
+                rect.y = 0;
+                rect.w = pCodecCtx->width;
+                rect.h = pCodecCtx->height;
+                // 显示图
+                SDL_DisplayYUVOverlay(bmp, &rect);
+                av_free_packet(&packet);
+            }
+        } else if(packet.stream_index==audioStream) { // 是音频流的话
+            // 音频到音频队列
+            packet_queue_put(&audioq, &packet);
+        } else {  // 其它流  具体我不清楚
+            // Free the packet that was allocated by av_read_frame
+            av_free_packet(&packet);
+        }
 
-    /* code */
+        
+        SDL_PollEvent(&event);
+            switch(event.type) {
+            case SDL_QUIT:
+                quit = 1;
+                SDL_Quit();
+                exit(0);
+                break;
+            default:
+                break;
+        }
+
+    }
+
+    // 释放内存
+    // Free the YUV frame
+    av_frame_free(&pFrame);
+    // Close the codecs
+    avcodec_close(pCodecCtxOrig);
+    avcodec_close(pCodecCtx);
+    avcodec_close(aCodecCtxOrig);
+    avcodec_close(aCodecCtx);
+
+    // Close the video file
+    avformat_close_input(&pFormatCtx);
+
     return 0;
 }
