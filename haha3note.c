@@ -452,6 +452,23 @@ Resample的伪代码如下：
 复制代码
 一开始，audio_hw_parames_src（source format）被初始化为target format，在resample获得第一个frame后，会从该frame中提取source format，并将其赋值给audio_hw_params_src，同时初始化SwrContext这个结构体，指定target format和source format。然后swr_convert对输入的frame进行resample(swr_convert），然后将resample后得到的数据放进resample函数指定的缓冲区（audio_buf）中。
 
+
+
+tbn= the time base in AVStream that has come from the container
+
+tbc= the time base in AVCodecContext for the codec used for a particular stream
+
+tbr= tbr is guessed from the video stream and is the value users want to see when they look for the video frame rate
+
+25  tbr代表帧率；
+
+12800 tbn代表文件层（st）的时间精度，即1S=12800，和duration相关；
+
+50   tbc代表视频层（st->codec）的时间精度，即1S=50，和strem->duration和时间戳相关。
+
+便于理解，下图为我打印的解码后的时间戳 也就是 视频是25帧 的， 1S = 50 ;
+
+
 */
 
 

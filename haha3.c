@@ -73,7 +73,7 @@ int main(int argc, char const *argv[])
     }
 
     av_dump_format(pFormatCtx, 0, argv[1], 0);
-
+    printf("\n\n\n\n");
     // * Read packets of a media file to get stream information. This
      // * is useful for file formats with no headers such as MPEG. This
      // * function also computes the real framerate in case of MPEG-2 repeat
