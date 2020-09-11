@@ -351,6 +351,7 @@ int main(int argc, char const *argv[])
     // Find the first video stream
     int videoStream=-1;
     int audioStream=-1;
+    int i;
     for(i=0; i<pFormatCtx->nb_streams; i++) {
         if(pFormatCtx->streams[i]->codec->codec_type==AVMEDIA_TYPE_VIDEO && videoStream < 0) {
             videoStream=i;
@@ -546,6 +547,8 @@ int main(int argc, char const *argv[])
     int       frameFinished;
     // 图显示位置
     SDL_Rect        rect;
+    // 窗口事件. 
+    SDL_Event       event;
     // 读文件包
     while(av_read_frame(pFormatCtx, &packet)>=0) {
         // Is this a packet from the video stream?
