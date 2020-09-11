@@ -191,6 +191,7 @@ int audio_decode_frame(AVCodecContext *aCodecCtx, uint8_t *audio_buf, int buf_si
         // 有数据
         while(audio_pkt_size > 0) {
             int got_frame = 0;
+            // 读一个packet的数据过来. 
             len1 = avcodec_decode_audio4(aCodecCtx, &frame, &got_frame, &pkt);
             if(len1 < 0) {
                 // 解码出错
@@ -244,19 +245,20 @@ int audio_decode_frame(AVCodecContext *aCodecCtx, uint8_t *audio_buf, int buf_si
 
 
 //  音频播放段 回调用. 
-// 把len长的数据写到stream里, 以供播放. 
+// 送数据到stream.
 void audio_callback(void *userdata, Uint8 *stream, int len) {
     // 解码上下文
     AVCodecContext *aCodecCtx = (AVCodecContext *)userdata;
     int len1, audio_size;
 
     static uint8_t audio_buf[(MAX_AUDIO_FRAME_SIZE * 3) / 2];
-    // 有多少数据
+    // 从包取多少数据
     static unsigned int audio_buf_size = 0;
-    // 写到那了. 
+    // 用到那了. 
     static unsigned int audio_buf_index = 0;
 
-    // 准备写数据
+    // 
+    // 送数据到stream.
     // This is basically a simple loop that will pull in data from another function we will write, 
     // audio_decode_frame(), store the result in an intermediary buffer, 
     // attempt to write len bytes to stream, and get more data if we don't have enough yet,
@@ -264,12 +266,12 @@ void audio_callback(void *userdata, Uint8 *stream, int len) {
     // The size of audio_buf is 1.5 times the size of the largest audio frame that 
     // ffmpeg will give us, which gives us a nice cushion.
     while(len > 0) {
-        // buffer 已用完. 读点数据
+        //  已发完. 读点数据
         if(audio_buf_index >= audio_buf_size) {
             /* We have already sent all our data; get more */
             audio_size = audio_decode_frame(aCodecCtx, audio_buf, sizeof(audio_buf));
             if(audio_size < 0) {
-                // 没有读到数据, 就播放无音. 
+                // 没有读到数据, 发无音. 
                 /* If error, output silence */
                 audio_buf_size = 1024; // arbitrary?
                 memset(audio_buf, 0, audio_buf_size);
@@ -278,16 +280,18 @@ void audio_callback(void *userdata, Uint8 *stream, int len) {
             }
             audio_buf_index = 0;
         }
-        // 有多少数据
+        // 有多少数据待读
         len1 = audio_buf_size - audio_buf_index;
         if(len1 > len){
-            // 数据过多, 只写要的数量. 
+            // 多于需求, 只读需求量
             len1 = len;
         }
         // memcpy(d, s+11, 6);// 从第 11 个字符(r)开始复制，连续复制 6 个字符(runoob)
         // 或者 memcpy(d, s+11*sizeof(char), 6*sizeof(char));
         memcpy(stream, (uint8_t *)audio_buf + audio_buf_index, len1);
-        // 还剩多少待写, 如果是0 小于0 退出了. 完成了. 
+        //
+        // 还剩多少没满足, 满足退出, 等下次需求. 
+        // 没满足继续while. 
         len -= len1;
         // stream 指针前移
         stream += len1;
