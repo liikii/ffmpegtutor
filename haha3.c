@@ -110,7 +110,7 @@ int packet_queue_put(PacketQueue *q, AVPacket *pkt) {
         // queue 为空
         q->first_pkt = pkt1;
     }else{
-        新包进来把原最后包下一个指到新包上. 
+        // 新包进来把原最后包下一个指到新包上. 
         q->last_pkt->next = pkt1;
     }
     // 追回为尾包.
@@ -349,8 +349,8 @@ int main(int argc, char const *argv[])
 
     //找到音视频流的索引. 
     // Find the first video stream
-    videoStream=-1;
-    audioStream=-1;
+    int videoStream=-1;
+    int audioStream=-1;
     for(i=0; i<pFormatCtx->nb_streams; i++) {
         if(pFormatCtx->streams[i]->codec->codec_type==AVMEDIA_TYPE_VIDEO && videoStream < 0) {
             videoStream=i;
@@ -493,7 +493,7 @@ int main(int argc, char const *argv[])
                pCodecCtx->pix_fmt,
                pCodecCtx->width,
                pCodecCtx->height,
-               PIX_FMT_YUV420P,
+               AV_PIX_FMT_YUV420P,
                SWS_BILINEAR,
                NULL,
                NULL,
@@ -544,6 +544,8 @@ int main(int argc, char const *argv[])
 
     AVPacket  packet;
     int       frameFinished;
+    // 图显示位置
+    SDL_Rect        rect;
     // 读文件包
     while(av_read_frame(pFormatCtx, &packet)>=0) {
         // Is this a packet from the video stream?
