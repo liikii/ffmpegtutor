@@ -256,6 +256,10 @@ void audio_callback(void *userdata, Uint8 *stream, int len) {
 }
 
 
+
+
+
+
 int stream_component_open(VideoState *is, int stream_index) {
     AVFormatContext *pFormatCtx = is->pFormatCtx;
     AVCodecContext *codecCtx = NULL;
@@ -316,6 +320,9 @@ int stream_component_open(VideoState *is, int stream_index) {
             is->video_st = pFormatCtx->streams[stream_index];
             is->video_ctx = codecCtx;
             packet_queue_init(&is->videoq);
+            // After we have our codec prepared, we start our video thread. This thread reads in packets from the video queue, 
+            // decodes the video into frames, and then calls a queue_picture function to put the processed 
+            // frame onto a picture queue:
             is->video_tid = SDL_CreateThread(video_thread, is);
             is->sws_ctx = sws_getContext(is->video_ctx->width, is->video_ctx->height,
                  is->video_ctx->pix_fmt, is->video_ctx->width,
@@ -467,7 +474,11 @@ int main(int argc, char const *argv[])
     is->pictq_mutex = SDL_CreateMutex();
     is->pictq_cond = SDL_CreateCond();
 
-    // SDL_AddTimer() is an SDL function that simply makes a callback to the user-specfied function after a certain number of milliseconds (and optionally carrying some user data). We're going to use this function to schedule video updates - every time we call this function, it will set the timer, which will trigger an event, which will have our main() function in turn call a function that pulls a frame from our picture queue and displays it! Phew!
+    // SDL_AddTimer() is an SDL function that simply makes a callback to the user-specfied function 
+    // after a certain number of milliseconds (and optionally carrying some user data). 
+    // We're going to use this function to schedule video updates - every time we call this function, 
+    // it will set the timer, which will trigger an event, which will have our main() function in turn 
+    // call a function that pulls a frame from our picture queue and displays it! Phew!
     schedule_refresh(is, 40);
 
     is->parse_tid = SDL_CreateThread(decode_thread, is);
