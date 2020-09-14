@@ -228,6 +228,37 @@ int audio_decode_frame(AVCodecContext *aCodecCtx, uint8_t *audio_buf, int buf_si
 }
 
 
+void audio_callback(void *userdata, Uint8 *stream, int len) {
+    VideoState *is = (VideoState *)userdata;
+    int len1, audio_size;
+
+    while(len > 0) {
+        if(is->audio_buf_index >= is->audio_buf_size) {
+            /* We have already sent all our data; get more */
+            audio_size = audio_decode_frame(is, is->audio_buf, sizeof(is->audio_buf));
+            if(audio_size < 0) {
+                /* If error, output silence */
+                is->audio_buf_size = 1024;
+                memset(is->audio_buf, 0, is->audio_buf_size);
+            } else {
+                is->audio_buf_size = audio_size;
+            }
+            is->audio_buf_index = 0;
+        }
+        len1 = is->audio_buf_size - is->audio_buf_index;
+        if(len1 > len){
+            len1 = len;
+        }
+        memcpy(stream, (uint8_t *)is->audio_buf + is->audio_buf_index, len1);
+        len -= len1;
+        stream += len1;
+        is->audio_buf_index += len1;
+    }
+}
+
+
+
+
 int main(int argc, char const *argv[])
 {
     /* code */
