@@ -133,6 +133,47 @@ int packet_queue_put(PacketQueue *q, AVPacket *pkt) {
 }
 
 
+static int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block)
+{
+    // 取出一个给avpacket
+    AVPacketList *pkt1;
+    int ret;
+
+    SDL_LockMutex(q->mutex);
+
+    for(;;) {
+
+        if(global_video_state->quit) {
+            ret = -1;
+            break;
+        }
+
+        pkt1 = q->first_pkt;
+        if (pkt1) {
+            q->first_pkt = pkt1->next;
+            // 最后一个
+            if (!q->first_pkt){
+                q->last_pkt = NULL;
+            }
+            q->nb_packets--;
+            q->size -= pkt1->pkt.size;
+            *pkt = pkt1->pkt;
+            av_free(pkt1);
+            ret = 1;
+            break;
+        } else if (!block) {
+            // 非阻塞
+            ret = 0;
+            break;
+        } else {
+            SDL_CondWait(q->cond, q->mutex);
+        }
+    }
+    SDL_UnlockMutex(q->mutex);
+    return ret;
+}
+
+
 
 int main(int argc, char const *argv[])
 {
