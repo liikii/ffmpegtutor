@@ -19,6 +19,11 @@
 // tutorial04 myvideofile.mpg
 //
 // to play the video stream on your screen.
+/*
+gcc -o tut4 tut4.c -lavutil -lavformat -lavcodec -lswscale -lz -lm \
+`sdl-config --cflags --libs`
+
+*/
 
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -74,7 +79,7 @@ typedef struct VideoState {
   AVStream        *audio_st;
   AVCodecContext  *audio_ctx;
   PacketQueue     audioq;
-  uint8_t         audio_buf[(AVCODEC_MAX_AUDIO_FRAME_SIZE * 3) / 2];
+  uint8_t         audio_buf[(MAX_AUDIO_FRAME_SIZE * 3) / 2];
   unsigned int    audio_buf_size;
   unsigned int    audio_buf_index;
   AVFrame         audio_frame;
@@ -400,7 +405,7 @@ int queue_picture(VideoState *is, AVFrame *pFrame) {
 
     SDL_LockYUVOverlay(vp->bmp);
     
-    dst_pix_fmt = PIX_FMT_YUV420P;
+    dst_pix_fmt = AV_PIX_FMT_YUV420P;
     /* point pict at the queue */
 
     pict.data[0] = vp->bmp->pixels[0];
@@ -518,7 +523,7 @@ int stream_component_open(VideoState *is, int stream_index) {
     is->video_tid = SDL_CreateThread(video_thread, is);
     is->sws_ctx = sws_getContext(is->video_ctx->width, is->video_ctx->height,
 				 is->video_ctx->pix_fmt, is->video_ctx->width,
-				 is->video_ctx->height, PIX_FMT_YUV420P,
+				 is->video_ctx->height, AV_PIX_FMT_YUV420P,
 				 SWS_BILINEAR, NULL, NULL, NULL
 				 );
     break;

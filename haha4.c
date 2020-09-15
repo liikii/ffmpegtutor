@@ -724,6 +724,10 @@ int main(int argc, char const *argv[])
         SDL_WaitEvent(&event);
         switch(event.type) {
             case FF_QUIT_EVENT:
+                is->quit = 1;
+                SDL_Quit();
+                return 0;
+                break;
             case SDL_QUIT:
                 is->quit = 1;
                 SDL_Quit();
