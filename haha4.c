@@ -256,7 +256,36 @@ void audio_callback(void *userdata, Uint8 *stream, int len) {
 }
 
 
+// ------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------
 
+
+int video_thread(void *arg) {
+    VideoState *is = (VideoState *)arg;
+    AVPacket pkt1, *packet = &pkt1;
+    int frameFinished;
+    AVFrame *pFrame;
+
+    pFrame = av_frame_alloc();
+
+  for(;;) {
+    if(packet_queue_get(&is->videoq, packet, 1) < 0) {
+      // means we quit getting packets
+      break;
+    }
+    // Decode video frame
+    avcodec_decode_video2(is->video_ctx, pFrame, &frameFinished, packet);
+    // Did we get a video frame?
+    if(frameFinished) {
+      if(queue_picture(is, pFrame) < 0) {
+    break;
+      }      
+    }
+    av_free_packet(packet);
+  }
+  av_frame_free(&pFrame);
+  return 0;
+}
 
 
 
