@@ -37,49 +37,49 @@ scp haha4.c haha4.sh liikii@192.168.1.104:/home/liikii/tmp3/
 
 
 typedef struct PacketQueue {
-  AVPacketList *first_pkt, *last_pkt;
-  int nb_packets;
-  int size;
-  SDL_mutex *mutex;
-  SDL_cond *cond;
+    AVPacketList *first_pkt, *last_pkt;
+    int nb_packets;
+    int size;
+    SDL_mutex *mutex;
+    SDL_cond *cond;
 } PacketQueue;
 
 
 typedef struct VideoPicture {
-  SDL_Overlay *bmp;
-  int width, height; /* source height & width */
-  int allocated;
+    SDL_Overlay *bmp;
+    int width, height; /* source height & width */
+    int allocated;
 } VideoPicture;
 
 
 typedef struct VideoState {
-  AVFormatContext *pFormatCtx;
-  int             videoStream, audioStream;
-  AVStream        *audio_st;
-  AVCodecContext  *audio_ctx;
-  PacketQueue     audioq;
-  uint8_t         audio_buf[(MAX_AUDIO_FRAME_SIZE * 3) / 2];
-  unsigned int    audio_buf_size;
-  unsigned int    audio_buf_index;
-  AVFrame         audio_frame;
-  AVPacket        audio_pkt;
-  uint8_t         *audio_pkt_data;
-  int             audio_pkt_size;
-  AVStream        *video_st;
-  AVCodecContext  *video_ctx;
-  PacketQueue     videoq;
-  struct SwsContext *sws_ctx;
+    AVFormatContext *pFormatCtx;
+    int             videoStream, audioStream;
+    AVStream        *audio_st;
+    AVCodecContext  *audio_ctx;
+    PacketQueue     audioq;
+    uint8_t         audio_buf[(MAX_AUDIO_FRAME_SIZE * 3) / 2];
+    unsigned int    audio_buf_size;
+    unsigned int    audio_buf_index;
+    AVFrame         audio_frame;
+    AVPacket        audio_pkt;
+    uint8_t         *audio_pkt_data;
+    int             audio_pkt_size;
+    AVStream        *video_st;
+    AVCodecContext  *video_ctx;
+    PacketQueue     videoq;
+    struct SwsContext *sws_ctx;
 
-  VideoPicture    pictq[VIDEO_PICTURE_QUEUE_SIZE];
-  int             pictq_size, pictq_rindex, pictq_windex;
-  SDL_mutex       *pictq_mutex;
-  SDL_cond        *pictq_cond;
-  
-  SDL_Thread      *parse_tid;
-  SDL_Thread      *video_tid;
+    VideoPicture    pictq[VIDEO_PICTURE_QUEUE_SIZE];
+    int             pictq_size, pictq_rindex, pictq_windex;
+    SDL_mutex       *pictq_mutex;
+    SDL_cond        *pictq_cond;
 
-  char            filename[1024];
-  int             quit;
+    SDL_Thread      *parse_tid;
+    SDL_Thread      *video_tid;
+
+    char            filename[1024];
+    int             quit;
 } VideoState;
 
 
@@ -255,9 +255,132 @@ void audio_callback(void *userdata, Uint8 *stream, int len) {
     }
 }
 
+// ------
 
-// ------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------
+static Uint32 sdl_refresh_timer_cb(Uint32 interval, void *opaque) {
+    SDL_Event event;
+    event.type = FF_REFRESH_EVENT;
+    event.user.data1 = opaque;
+    SDL_PushEvent(&event);
+    return 0; /* 0 means stop timer */
+}
+
+
+/* schedule a video refresh in 'delay' ms */
+static void schedule_refresh(VideoState *is, int delay) {
+    SDL_AddTimer(delay, sdl_refresh_timer_cb, is);
+}
+
+// ------
+// ------
+
+
+void alloc_picture(void *userdata) {
+    // 新建一个VideoPicture. 
+    VideoState *is = (VideoState *)userdata;
+    VideoPicture *vp;
+    // VideoPicture
+    vp = &is->pictq[is->pictq_windex];
+
+    if(vp->bmp) {
+        // we already have one make another, bigger/smaller
+        SDL_FreeYUVOverlay(vp->bmp);
+    }
+    // Allocate a place to put our YUV image on that screen
+    SDL_LockMutex(screen_mutex);
+    // // Allocate a place to put our YUV image on that screen
+    vp->bmp = SDL_CreateYUVOverlay(is->video_ctx->width,
+                                    is->video_ctx->height,
+                                    SDL_YV12_OVERLAY,
+                                    screen);
+    SDL_UnlockMutex(screen_mutex);
+
+    vp->width = is->video_ctx->width;
+    vp->height = is->video_ctx->height;
+    vp->allocated = 1;
+
+}
+
+/*
+The majority of this part is simply the code we used earlier to fill the YUV overlay with our frame. 
+The last bit is simply "adding" our value onto the queue. The queue works by adding onto it until it is full, 
+and reading from it as long as there is something on it. Therefore everything depends upon the is->pictq_size value, 
+requiring us to lock it. So what we do here is increment the write pointer (and rollover if necessary), 
+then lock the queue and increase its size. Now our reader will know there is more information on the queue, 
+and if this makes our queue full, our writer will know about it.
+*/
+int queue_picture(VideoState *is, AVFrame *pFrame) {
+    VideoPicture *vp;
+    int dst_pix_fmt;
+    AVPicture pict;
+
+    /* wait until we have space for a new pic */
+    // 等空间. 
+    // !is->quit 没有退出. 
+    SDL_LockMutex(is->pictq_mutex);
+    while(is->pictq_size >= VIDEO_PICTURE_QUEUE_SIZE && !is->quit) {
+        SDL_CondWait(is->pictq_cond, is->pictq_mutex);
+    }
+    SDL_UnlockMutex(is->pictq_mutex);
+
+    // 
+    if(is->quit){
+        return -1;
+    }
+
+    printf("queue_picture pictq_windex =  %d\n", is->pictq_windex);
+
+    // videopicture pointer
+    // windex is set to 0 initially
+    vp = &is->pictq[is->pictq_windex];
+
+    // 新建bmp
+    /* allocate or resize the buffer! */
+    if(!vp->bmp || vp->width != is->video_ctx->width || vp->height != is->video_ctx->height) {
+        // 为什么建这个event 不明. 
+        SDL_Event event;
+        vp->allocated = 0;
+        alloc_picture(is);
+        if(is->quit) {
+            return -1;
+        }
+    }
+
+    /* We have a place to put our picture on the queue */
+
+    if(vp->bmp) {
+
+        SDL_LockYUVOverlay(vp->bmp);
+
+        dst_pix_fmt = PIX_FMT_YUV420P;
+        /* point pict at the queue */
+
+        pict.data[0] = vp->bmp->pixels[0];
+        pict.data[1] = vp->bmp->pixels[2];
+        pict.data[2] = vp->bmp->pixels[1];
+
+        pict.linesize[0] = vp->bmp->pitches[0];
+        pict.linesize[1] = vp->bmp->pitches[2];
+        pict.linesize[2] = vp->bmp->pitches[1];
+
+        // Convert the image into YUV format that SDL uses
+        sws_scale(is->sws_ctx, (uint8_t const * const *)pFrame->data,
+              pFrame->linesize, 0, is->video_ctx->height,
+              pict.data, pict.linesize);
+
+        SDL_UnlockYUVOverlay(vp->bmp);
+
+        /* now we inform our display thread that we have a pic ready */
+        // ++ first add then assign.
+        if(++is->pictq_windex == VIDEO_PICTURE_QUEUE_SIZE) {
+            is->pictq_windex = 0;
+        }
+        SDL_LockMutex(is->pictq_mutex);
+        is->pictq_size++;
+        SDL_UnlockMutex(is->pictq_mutex);
+    }
+  return 0;
+}
 
 
 int video_thread(void *arg) {
@@ -268,20 +391,20 @@ int video_thread(void *arg) {
 
     pFrame = av_frame_alloc();
 
-  for(;;) {
-    if(packet_queue_get(&is->videoq, packet, 1) < 0) {
-      // means we quit getting packets
-      break;
-    }
-    // Decode video frame
-    avcodec_decode_video2(is->video_ctx, pFrame, &frameFinished, packet);
-    // Did we get a video frame?
-    if(frameFinished) {
-      if(queue_picture(is, pFrame) < 0) {
-    break;
-      }      
-    }
-    av_free_packet(packet);
+    for(;;) {
+        if(packet_queue_get(&is->videoq, packet, 1) < 0) {
+            // means we quit getting packets
+            break;
+        }
+        // Decode video frame
+        avcodec_decode_video2(is->video_ctx, pFrame, &frameFinished, packet);
+        // Did we get a video frame?
+        if(frameFinished) {
+            if(queue_picture(is, pFrame) < 0) {
+                break;
+            }      
+        }
+        av_free_packet(packet);
   }
   av_frame_free(&pFrame);
   return 0;
@@ -508,6 +631,7 @@ int main(int argc, char const *argv[])
     // We're going to use this function to schedule video updates - every time we call this function, 
     // it will set the timer, which will trigger an event, which will have our main() function in turn 
     // call a function that pulls a frame from our picture queue and displays it! Phew!
+    // 发个展示信号 
     schedule_refresh(is, 40);
 
     is->parse_tid = SDL_CreateThread(decode_thread, is);
