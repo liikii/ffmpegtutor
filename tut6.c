@@ -16,6 +16,20 @@
 // scp tut6.c  liikii@192.168.1.104:/home/liikii/tmp3/ 
 // gcc -o tut6 tut6.c -lavutil -lavformat -lavcodec -lswscale -lz -lm \
 `sdl-config --cflags --libs`
+/*
+DTS（Decoding Time Stamp）：即解码时间戳，这个时间戳的意义在于告诉播放器该在什么时候解码这一帧的数据。
+PTS（Presentation Time Stamp）：即显示时间戳，这个时间戳用来告诉播放器该在什么时候显示这一帧的数据。
+需要注意的是：虽然 DTS、PTS 是用于指导播放端的行为，但它们是在编码的时候由编码器生成的。
+
+当视频流中没有 B 帧时，通常 DTS 和 PTS 的顺序是一致的。但如果有 B 帧时，就回到了我们前面说的问题：解码顺序和播放顺序不一致了。
+
+比如一个视频中，帧的显示顺序是：I B B P，现在我们需要在解码 B 帧时知道 P 帧中信息，因此这几帧在视频流中的顺序可能是：I P B B，
+这时候就体现出每帧都有 DTS 和 PTS 的作用了。DTS 告诉我们该按什么顺序解码这几帧图像，PTS 告诉我们该按什么顺序显示这几帧图像。
+顺序大概如下：
+   PTS: 1 4 2 3
+   DTS: 1 2 3 4
+Stream: I P B B
+*/
 
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
