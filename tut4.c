@@ -22,7 +22,7 @@
 /*
 gcc -o tut4 tut4.c -lavutil -lavformat -lavcodec -lswscale -lz -lm \
 `sdl-config --cflags --libs`
-
+scp tut4.c liikii@192.168.1.104:/home/liikii/tmp3/
 */
 
 #include <libavcodec/avcodec.h>

@@ -24,7 +24,8 @@
 // $ tutorial04 myvideofile.mpg
 //
 // to play the video stream on your screen.
-
+// scp tut42.c  liikii@192.168.1.104:/home/liikii/tmp3/ 
+// gcc -o tut42 tut42.c -lavutil -lavformat -lavcodec -lswscale -lz -lm `sdl-config --cflags --libs`
 
 
 #include <libavcodec/avcodec.h>
